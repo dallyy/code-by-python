@@ -1,0 +1,173 @@
+from typing import Generator, Generic, Iterable, List, Tuple, TypeVar
+T = TypeVar("T", str, int)
+
+class ACAutoMatonMap(Generic[T]):
+    """
+    不调用 BuildSuffixLink 就是Trie, 调用 BuildSuffixLink 就是AC自动机.
+    每个状态对应Trie中的一个结点, 也对应一个字符串.
+    wordPos[i]          表示加入的第i个模式串对应的节点编号.
+    _children[v][c]     表示节点v通过字符c转移到的节点.
+    _suffixLink         又叫fail.指向当前节点最长真后缀对应结点,例如"bc"是"abc"的最长真后缀.
+    _bfsOrder           表示结点的拓扑序,0表示虚拟节点.
+    match               表示Trie树的字符串完全匹配的状态`pos`，（AC自动机可注释掉）
+    """
+    __slots__ = ("wordPos", "_children", "_suffixLink", "_bfsOrder", "match")
+
+    def __init__(self):
+        self.wordPos = []
+        self._children = [{}]
+        self._suffixLink = []
+        self._bfsOrder = []
+        # self.match = set() 
+
+    # 将单个字符`char`插入到Trie树中的当前状态`pos`.返回插入后的新的状态`pos`.
+    def addChar(self, pos: int, char: T) -> int:
+        nexts = self._children[pos]
+        if char in nexts:
+            return nexts[char]
+        nextState = len(self._children)
+        nexts[char] = nextState
+        self._children.append({})
+        return nextState
+
+    # 将模式串`pattern`插入到Trie树中.模式串一般是`被禁用的单词`.返回插入后的新的状态`pos`.
+    def addString(self, string: Iterable[T]) -> int:
+        if not string:
+            return 0
+        pos = 0
+        for char in string:
+            pos = self.addChar(pos, char)
+        self.wordPos.append(pos)
+        # self.match.add(pos)
+        return pos
+    
+    # 返回string在Trie树上的节点位置.如果不存在,返回0.
+    def search(self, string: Iterable[T]) -> int:
+        if not string:
+            return 0
+        pos = 0
+        for char in string:
+            if pos < 0 or pos >= len(self._children):
+                return 0
+            nexts = self._children[pos]
+            if char in nexts:
+                pos = nexts[char]
+            else:
+                return 0
+        return pos
+
+    # 构建后缀链接(失配指针). (上面是trie树部分，下面是ac自动机部分)
+    def buildSuffixLink(self):
+        self._suffixLink = [-1] * len(self._children)
+        self._bfsOrder = [0] * len(self._children)
+        head, tail = 0, 1
+        while head < tail:
+            v = self._bfsOrder[head]
+            head += 1
+            for char, next_ in self._children[v].items():
+                self._bfsOrder[tail] = next_
+                tail += 1
+                f = self._suffixLink[v]
+                while f != -1 and char not in self._children[f]:
+                    f = self._suffixLink[f]
+                self._suffixLink[next_] = f
+                if f == -1:
+                    self._suffixLink[next_] = 0
+                else:
+                    self._suffixLink[next_] = self._children[f][char]
+    
+    # 从当前状态`pos`沿着字符`input_`转移到的下一个状态. 沿着失配链上跳,找到第一个可由char转移的节点.
+    def move(self, pos: int, char: T) -> int:
+        children, link = self._children, self._suffixLink
+        while True:
+            nexts = children[pos]
+            if char in nexts:
+                return nexts[char]
+            if pos == 0:
+                return 0
+            pos = link[pos]
+    
+    # 获取每个状态匹配到的模式串的个数.
+    def getCounter(self) -> List[int]:
+        counter = [0] * len(self._children)
+        for pos in self.wordPos:
+            counter[pos] += 1
+        for v in self._bfsOrder:
+            if v != 0:
+                counter[v] += counter[self._suffixLink[v]]
+        return counter
+
+    # 获取每个状态匹配到的模式串的索引.
+    def getIndexes(self) -> List[List[int]]:
+        res = [[] for _ in range(len(self._children))]
+        for i, pos in enumerate(self.wordPos):
+            res[pos].append(i)
+        for v in self._bfsOrder:
+            if v != 0:
+                from_, _children = self._suffixLink[v], v
+                arr1, arr2 = res[from_], res[_children]
+                arr3 = [0] * (len(arr1) + len(arr2))
+                i, j, k = 0, 0, 0
+                while i < len(arr1) and j < len(arr2):
+                    if arr1[i] < arr2[j]:
+                        arr3[k] = arr1[i]
+                        i += 1
+                    elif arr1[i] > arr2[j]:
+                        arr3[k] = arr2[j]
+                        j += 1
+                    else:
+                        arr3[k] = arr1[i]
+                        i += 1
+                        j += 1
+                    k += 1
+                while i < len(arr1):
+                    arr3[k] = arr1[i]
+                    i += 1
+                    k += 1
+                while j < len(arr2):
+                    arr3[k] = arr2[j]
+                    j += 1
+                    k += 1
+                res[_children] = arr3
+        return res
+
+    @property
+    def size(self) -> int:
+        return len(self._children)
+
+
+class Trie:
+    def __init__(self):
+        self.ac = ACAutoMatonMap() 
+        self.val = {}
+
+    def insert(self, word: str, value: int) -> None:
+        pos = 0 
+        if (pos not in self.val) or (self.val[pos] > value):
+            self.val[pos] = value
+        for char in word:
+            pos = self.ac.addChar(pos, char)
+            if (pos not in self.val) or (self.val[pos] > value):
+                self.val[pos] = value
+        
+    def search(self, word: str) -> bool:
+        pos = 0
+        ans = self.val[pos] % 100000
+        for char in word:
+            if pos < 0 or pos >= len(self.ac._children):
+                return ans
+            nexts = self.ac._children[pos]
+            if char in nexts:
+                pos = nexts[char]
+            else:
+                return ans
+            ans = self.val[pos] % 100000
+        return ans
+    #https://leetcode.cn/problems/longest-common-suffix-queries/
+class Solution:
+    def stringIndices(self, wordsContainer: List[str], wordsQuery: List[str]) -> List[int]:
+        t = Trie()
+        for i, w in enumerate(wordsContainer):
+            t.insert(w[::-1], len(w) * 100000 + i)
+        return [t.search(w[::-1]) for w in wordsQuery]
+
