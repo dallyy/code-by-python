@@ -1,0 +1,76 @@
+"""
+一个数据结构来处理以下查询：• add(x)：将 x 添加到集合中。• mex()：检索集合中的 mex 值。时间复杂度都为 O(1).
+"""
+class Mex:
+   
+    def __init__(self):
+        self.n = 0
+        self.mex = 0
+        self.max_limit = (1 << 31) - 1       
+        self.used = [False] * 1
+        self.v = []                           
+
+    def add(self, x: int) -> None:
+        if self.max_limit < x:
+            return
+
+        size = len(self.used)
+        self.n += 1
+        if self.n == size:
+            size *= 2
+            self.used += [False] * (size - len(self.used))
+            i = 0
+            while i < len(self.v):
+                if self.v[i] < size:
+                    self.used[self.v[i]] = True
+                    self.v[i], self.v[-1] = self.v[-1], self.v[i]
+                    self.v.pop()
+                else:
+                    i += 1
+
+        if x < size:
+            self.used[x] = True
+        else:
+            self.v.append(x)
+
+    def query(self) -> int:
+        while self.used[self.mex]:
+            self.mex += 1
+        return self.mex
+
+
+class Solution:
+    def maximumMEX(self, nums: List[int]) -> List[int]:
+        N = len(nums)
+        
+        # 统计每个数的出现次数
+        mp = {}
+        for a in nums:mp[a] = mp.get(a, 0) + 1
+        # 有序集合 S 保存当前未出现的非负整数
+        S = SortedSet()
+        for i in range(N + 2):
+            if i not in mp:
+                S.add(i)
+        
+        B = []
+        i = 0
+#分组循环
+        while i < N:
+            val = S[0]  # 当前未出现的最小非负整数
+            mex = Mex()
+            
+            # 不断添加元素直到该段的 mex 等于 val
+            while True:
+                mex.add(nums[i])
+                mp[nums[i]] -= 1
+                if mp[nums[i]] == 0:
+                    S.add(nums[i])
+                i += 1
+                if mex.query() == val:
+                    break
+            
+            B.append(val)
+        
+        return B
+
+
