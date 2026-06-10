@@ -1,0 +1,324 @@
+@extend
+class int:
+    def bit_length(self): return 64 - abs(self).__ctlz__()
+    def bit_count(self): return abs(self).__ctpop__()
+from typing import Optional
+
+class WaveletMatrix:
+    # Codon用にメンバ変数の型を明示的に静的宣言
+    original_V: list[int]
+    n: int
+    lg: int
+    ranks: list[list[int]]
+    zero_sums: list[int]
+    build_acc: bool
+    _distinct_wm: Optional[WaveletMatrix]
+    accs: list[list[int]]
+
+    def __init__(self, V, build_acc=True):
+        self.original_V = list(V)
+        n = self.n = len(self.original_V)
+        lg = self.lg = max(self.original_V).bit_length() if n > 0 else 0
+        self.ranks = []
+        self.zero_sums = []
+        self.build_acc = build_acc
+        self._distinct_wm = None
+        self.accs = [] # Codonの型固定のため、常に初期化しておく
+        
+        curr_V = self.original_V[:]
+        
+        if build_acc:
+            bit_shift = lg - 1
+            for depth in range(lg):
+                rank = [0] * (n + 1)
+                r_cnt = 0
+                for i in range(n):
+                    r_cnt += (curr_V[i] >> bit_shift) & 1
+                    rank[i + 1] = r_cnt
+                    
+                self.ranks.append(rank)
+                z_cnt = n - r_cnt
+                self.zero_sums.append(z_cnt)
+                
+                swp = [0] * n
+                zero, one = 0, z_cnt
+                for i in range(n):
+                    v = curr_V[i]
+                    if (v >> bit_shift) & 1:
+                        swp[one] = v
+                        one += 1
+                    else:
+                        swp[zero] = v
+                        zero += 1
+                        
+                acc = [0] * (n + 1)
+                a = 0
+                for i in range(n):
+                    a += swp[i]
+                    acc[i + 1] = a
+                self.accs.append(acc)
+                
+                curr_V = swp
+                bit_shift -= 1
+                
+            acc = [0] * (n + 1)
+            a = 0
+            for i in range(n):
+                a += self.original_V[i]
+                acc[i + 1] = a
+            self.accs.append(acc)
+        else:
+            bit_shift = lg - 1
+            for depth in range(lg):
+                rank = [0] * (n + 1)
+                r_cnt = 0
+                for i in range(n):
+                    r_cnt += (curr_V[i] >> bit_shift) & 1
+                    rank[i + 1] = r_cnt
+                    
+                self.ranks.append(rank)
+                z_cnt = n - r_cnt
+                self.zero_sums.append(z_cnt)
+                
+                swp = [0] * n
+                zero, one = 0, z_cnt
+                for i in range(n):
+                    v = curr_V[i]
+                    if (v >> bit_shift) & 1:
+                        swp[one] = v
+                        one += 1
+                    else:
+                        swp[zero] = v
+                        zero += 1
+                        
+                curr_V = swp
+                bit_shift -= 1
+
+    def access(self, i):
+        return self.original_V[i]
+
+    def rank(self, r, x):
+        n = self.n
+        lg = self.lg
+        if x >= (1 << lg): return 0
+        ranks = self.ranks
+        shift = lg - 1
+        for depth in range(lg):
+            bit = (x >> shift) & 1
+            rank_arr = ranks[depth]
+            if bit:
+                r = (n - rank_arr[n]) + rank_arr[r]
+            else:
+                r -= rank_arr[r]
+            shift -= 1
+        return r
+
+    def rank_range(self, l, r, x):
+        return self.rank(r, x) - self.rank(l, x)
+
+    def quantile(self, l, r, k):
+        res = 0
+        lg = self.lg
+        ranks = self.ranks
+        zero_sums = self.zero_sums
+        shift = lg - 1
+        for depth in range(lg):
+            rank_arr = ranks[depth]
+            ones = rank_arr[r] - rank_arr[l]
+            zeros = (r - l) - ones
+            if k < zeros:
+                l -= rank_arr[l]
+                r -= rank_arr[r]
+            else:
+                res |= 1 << shift
+                k -= zeros
+                z = zero_sums[depth]
+                l = z + rank_arr[l]
+                r = z + rank_arr[r]
+            shift -= 1
+        return res
+
+    def _range_freq(self, l, r, x):
+        lg = self.lg
+        if x >= (1 << lg):
+            return r - l
+        res = 0
+        ranks = self.ranks
+        zero_sums = self.zero_sums
+        shift = lg - 1
+        for depth in range(lg):
+            rank_arr = ranks[depth]
+            ones = rank_arr[r] - rank_arr[l]
+            zeros = (r - l) - ones
+            if (x >> shift) & 1:
+                res += zeros
+                z = zero_sums[depth]
+                l = z + rank_arr[l]
+                r = z + rank_arr[r]
+            else:
+                l -= rank_arr[l]
+                r -= rank_arr[r]
+            shift -= 1
+        return res
+
+    def range_freq(self, left, right, lower, upper):
+        return self._range_freq(left, right, upper) - self._range_freq(left, right, lower)
+
+    def prev_value(self, left, right, upper):
+        cnt = self._range_freq(left, right, upper)
+        return self.quantile(left, right, cnt - 1) if cnt > 0 else None
+
+    def next_value(self, left, right, lower):
+        cnt = self._range_freq(left, right, lower)
+        return self.quantile(left, right, cnt) if cnt < right - left else None
+
+    def _range_sum(self, l, r, x):
+        lg = self.lg
+        if x >= (1 << lg): return self.accs[-1][r] - self.accs[-1][l]
+        res = 0
+        ranks = self.ranks
+        accs = self.accs
+        zero_sums = self.zero_sums
+        shift = lg - 1
+        for depth in range(lg):
+            bit = (x >> shift) & 1
+            rank_arr = ranks[depth]
+            acc_arr = accs[depth]
+            
+            if bit:
+                l0 = l - rank_arr[l]
+                r0 = r - rank_arr[r]
+                res += acc_arr[r0] - acc_arr[l0]
+                z = zero_sums[depth]
+                l = z + rank_arr[l]
+                r = z + rank_arr[r]
+            else:
+                l -= rank_arr[l]
+                r -= rank_arr[r]
+            shift -= 1
+        return res
+
+    def range_sum(self, left, right, lower, upper):
+        return self._range_sum(left, right, upper) - self._range_sum(left, right, lower)
+
+    def _build_distinct_wm(self):
+        n = self.n
+        shift = n.bit_length()
+        packed = [(self.original_V[i] << shift) | i for i in range(n)]
+        packed.sort()
+        
+        P = [0] * n
+        mask = (1 << shift) - 1
+        
+        prev_v = -1
+        prev_i = -1
+        
+        for k in range(n):
+            val_idx = packed[k]
+            v = val_idx >> shift
+            i = val_idx & mask
+            
+            if v == prev_v:
+                P[i] = prev_i + 1
+            else:
+                P[i] = 0
+            
+            prev_v = v
+            prev_i = i
+            
+        self._distinct_wm = WaveletMatrix(P, build_acc=False)
+
+    def range_distinct(self, left, right):
+        if self._distinct_wm is None:
+            self._build_distinct_wm()
+        
+        return self._distinct_wm._range_freq(left, right, left + 1)
+
+    def bottom_k_sum(self, l, r, k):
+        if k <= 0: return 0
+        if k >= r - l: return self.accs[-1][r] - self.accs[-1][l]
+        
+        res = 0
+        val = 0
+        ranks = self.ranks
+        accs = self.accs
+        zero_sums = self.zero_sums
+        lg = self.lg
+        shift = lg - 1
+        
+        for depth in range(lg):
+            rank_arr = ranks[depth]
+            acc_arr = accs[depth]
+            
+            ones = rank_arr[r] - rank_arr[l]
+            zeros = (r - l) - ones
+            
+            l0 = l - rank_arr[l]
+            r0 = r - rank_arr[r]
+            
+            if k <= zeros:
+                l = l0
+                r = r0
+            else:
+                res += acc_arr[r0] - acc_arr[l0]
+                k -= zeros
+                
+                val |= (1 << shift)
+                z = zero_sums[depth]
+                l = z + rank_arr[l]
+                r = z + rank_arr[r]
+                
+            shift -= 1
+                
+        res += k * val
+        return res
+
+    def top_k_sum(self, l, r, k):
+        if k <= 0: return 0
+        length = r - l
+        if k >= length: return self.accs[-1][r] - self.accs[-1][l]
+        
+        total_sum = self.accs[-1][r] - self.accs[-1][l]
+        return total_sum - self.bottom_k_sum(l, r, length - k)
+#https://atcoder.jp/contests/abc461/tasks/abc461_e
+N, Q = list(map(int, input().split()))
+queries = []
+tate = []
+yoko = []
+for _ in range(Q):
+    query = list(map(int, input().split()))
+    queries.append(query[:])
+    if query[0] == 1:
+        _, R = query
+        tate.append(0)
+        yoko.append(R)
+    elif query[0] == 2:
+        _, C = query
+        tate.append(C)
+        yoko.append(0)
+
+pre_tate = [-1] * N
+WM_tate = WaveletMatrix(tate)
+pre_yoko = [-1] * N
+WM_yoko = WaveletMatrix(yoko)
+ans = 0
+for i in range(Q):
+    q, rc = queries[i]
+    if q == 1:
+        r = rc - 1
+        if pre_tate[r] == -1:
+            ans += N
+        else:
+            kind = WM_tate.range_distinct(pre_tate[r] + 1, i) - int(
+                WM_tate.range_freq(pre_tate[r] + 1, i, 0, 1) > 0
+            )
+            ans += kind
+        pre_tate[r] = i
+    else:
+        c = rc - 1
+        kind = WM_yoko.range_distinct(pre_yoko[c] + 1, i) - int(
+            WM_yoko.range_freq(pre_yoko[c] + 1, i, 0, 1) > 0
+        )
+        ans -= kind
+        pre_yoko[c] = i
+    print(ans)
