@@ -5,7 +5,7 @@ class int:
 from typing import Optional
 
 class WaveletMatrix:
-    # Codon用にメンバ変数の型を明示的に静的宣言
+    
     original_V: list[int]
     n: int
     lg: int
@@ -23,7 +23,7 @@ class WaveletMatrix:
         self.zero_sums = []
         self.build_acc = build_acc
         self._distinct_wm = None
-        self.accs = [] # Codonの型固定のため、常に初期化しておく
+        self.accs = [] 
         
         curr_V = self.original_V[:]
         
