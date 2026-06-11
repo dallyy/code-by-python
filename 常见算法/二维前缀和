@@ -1,0 +1,127 @@
+# region hide
+import sys
+from bisect import bisect_left, bisect_right
+from collections import Counter, defaultdict, deque
+from functools import cache, reduce
+from heapq import heapify as hpify
+from heapq import heappop as hpop
+from heapq import heappush as hpush
+from itertools import (
+    accumulate,
+    combinations,
+    combinations_with_replacement,
+    groupby,
+    permutations,
+    product,
+)
+from math import ceil, gcd, inf, isqrt, lcm, sqrt
+from os.path import exists
+from typing import List, Optional, Union
+
+import numpy as np
+
+MOD = 10**9 + 7
+DIR4 = ((1, 0), (0, 1), (-1, 0), (0, -1))
+DIR8 = tuple((dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0))
+DIR6 = ((2, 0), (1, 1), (-1, 1), (-2, 0), (-1, -1), (1, -1))  # hex grid
+
+# input.txt (if non-empty) overrides stdin
+_in_str = ""
+if exists("input.txt"):
+    with open("input.txt") as _fh:
+        _in_str = _fh.read()
+
+_src = iter(_in_str.splitlines()).__next__ if _in_str.strip() else sys.stdin.readline
+
+
+def _readline() -> str:
+    return _src()
+
+
+def ss() -> str:
+    return _readline().rstrip()
+
+
+def ii() -> int:
+    return int(ss())
+
+
+def im():
+    """'1 2' -> map; usage: a, b = im()"""
+    return map(int, ss().split())
+
+
+def li() -> list[int]:
+    return list(map(int, ss().split()))
+
+
+def lis() -> list[int]:
+    """'123' -> [1, 2, 3] (digit string)"""
+    return list(map(int, ss()))
+
+
+def lc() -> list[str]:
+    """'abc' -> ['a', 'b', 'c']"""
+    return list(ss())
+
+
+# Buffered output; flush=True for interactive
+_out: list[str] = []
+_real_print = print
+
+
+def print(
+    *args, sep: str = " ", end: str = "\n", file=None, flush: bool = False, **_
+) -> None:
+    if file is not None:
+        _real_print(*args, sep=sep, end=end, file=file, flush=flush)
+        return
+    _out.append(sep.join(map(str, args)))
+    _out.append(end)
+    if flush:
+        sys.stdout.write("".join(_out))
+        _out.clear()
+        sys.stdout.flush()
+
+
+def yn(cond) -> None:
+    """Yes / No"""
+    print("Yes" if cond else "No")
+
+
+def YN(cond) -> None:
+    """YES / NO"""
+    print("YES" if cond else "NO")
+
+
+# endregion
+
+
+def solve() -> None:
+    h, w, k = im()
+    s = [lis() for _ in range(h)]
+
+    P = [[0] * (w + 1) for _ in range(h + 1)]
+    for i in range(1, h + 1):
+        s_row = s[i - 1]
+        P_curr = P[i]
+        P_prev = P[i - 1]
+        for j in range(1, w + 1):
+            P_curr[j] = s_row[j - 1] + P_prev[j] + P_curr[j - 1] - P_prev[j - 1]
+
+    ans = 0
+
+    for r_start in range(h):
+        for r_end in range(r_start, h):
+            cnt = {0: 1}
+            for c in range(1, w + 1):
+                prefix_sum = P[r_end + 1][c] - P[r_start][c]
+                ans += cnt.get(prefix_sum - k, 0)
+                cnt[prefix_sum] = cnt.get(prefix_sum, 0) + 1
+
+    print(ans)
+
+
+if __name__ == "__main__":
+    solve()
+    sys.stdout.write("".join(_out))
