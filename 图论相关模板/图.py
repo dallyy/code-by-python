@@ -14,6 +14,22 @@ readlines = sys.stdin.readlines
 sys.setrecursionlimit(10**7)
 
 
+import bisect
+import copy
+import heapq
+import itertools
+import math
+import sys
+from collections import defaultdict, deque
+from functools import lru_cache, reduce
+from math import gcd as Gcd
+
+read = sys.stdin.read
+readline = sys.stdin.readline
+readlines = sys.stdin.readlines
+sys.setrecursionlimit(10**7)
+
+
 class Graph:
     def __init__(self, N, edges=False, graph=False, weighted=False):
         self.N = N
@@ -209,35 +225,6 @@ class Graph:
             scc.append(lst)
         return scc
 
-    def Build_LCA(self, s):
-        self.euler_tour = [x for x, d in self.DFS(s)] if self.weighted else self.DFS(s)
-        self.dfs_in_index = [None] * self.N
-        self.dfs_out_index = [None] * self.N
-        depth = self.Unweighted_Dist(s)
-        self.parents = self.Parents(s)
-        for i, x in enumerate(self.euler_tour):
-            if x >= 0:
-                self.dfs_in_index[x] = i
-            else:
-                self.dfs_out_index[~x] = i
-        self.ST = SegmentTree(2 * self.N, lambda x, y: min(x, y), float("inf"))
-        lst = [None] * 2 * self.N
-        for i in range(2 * self.N):
-            if self.euler_tour[i] >= 0:
-                lst[i] = depth[self.euler_tour[i]]
-            else:
-                lst[i] = depth[self.parents[~self.euler_tour[i]]]
-        self.ST.Build(lst)
-
-    def LCA(self, a, b):
-        m = min(self.dfs_in_index[a], self.dfs_in_index[b])
-        M = max(self.dfs_in_index[a], self.dfs_in_index[b])
-        x = self.euler_tour[self.ST.Query_Index(m, M + 1)]
-        if x >= 0:
-            return x
-        else:
-            return self.parents[~x]
-
     def Dijkstra(self, s, route_restoration=False):
         dist = [float("inf")] * self.N
         dist[s] = 0
@@ -404,7 +391,6 @@ class Graph:
                 residual_graph[i][j] += graph[i][j]
         max_flow += Flow(residual_graph)
         return max_flow
-
 
 # https://atcoder.jp/contests/abc139/submissions/21523615
 # N = int(readline())
