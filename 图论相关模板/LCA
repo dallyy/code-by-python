@@ -1,0 +1,166 @@
+import sys
+from collections import deque
+
+class SegmentTree:
+    """用于欧拉序 LCA 的区间最小值索引查询 (RMQ)"""
+    def __init__(self, n, op, e):
+        self.n = n
+        self.size = 1 << (n - 1).bit_length()
+        self.tree = [e] * (2 * self.size)
+        self.index_tree = [-1] * (2 * self.size)
+        self.e = e
+
+    def Build(self, arr):
+        for i in range(self.n):
+            self.tree[self.size + i] = arr[i] if arr[i] is not None else self.e
+            self.index_tree[self.size + i] = i
+        for i in range(self.size - 1, 0, -1):
+            self._push_up(i)
+
+    def _push_up(self, k):
+        if self.tree[2 * k] <= self.tree[2 * k + 1]:
+            self.tree[k] = self.tree[2 * k]
+            self.index_tree[k] = self.index_tree[2 * k]
+        else:
+            self.tree[k] = self.tree[2 * k + 1]
+            self.index_tree[k] = self.index_tree[2 * k + 1]
+
+    def Query_Index(self, l, r):
+        l += self.size
+        r += self.size
+        res_val = self.e
+        res_idx = -1
+        while l < r:
+            if l % 2 == 1:
+                if self.tree[l] < res_val:
+                    res_val = self.tree[l]
+                    res_idx = self.index_tree[l]
+                l += 1
+            if r % 2 == 1:
+                r -= 1
+                if self.tree[r] < res_val:
+                    res_val = self.tree[r]
+                    res_idx = self.index_tree[r]
+            l //= 2
+            r //= 2
+        return res_idx
+
+
+class Graph:
+    """树论核心模板：支持 O(1) LCA 与距离查询"""
+    def __init__(self, N, edges=False, graph=False, weighted=False):
+        self.N = N
+        self.weighted = weighted
+        if not graph:
+            self.edges = edges
+            self.graph = [[] for i in range(self.N)]
+            for i, j in self.edges:
+                self.graph[i].append(j)
+                self.graph[j].append(i) # 树默认建双向边
+        else:
+            self.graph = graph
+
+    def BFS(self, s):
+        seen = [False] * self.N
+        seen[s] = True
+        queue = deque([s])
+        bfs_tour = []
+        while queue:
+            x = queue.popleft()
+            for y in self.graph[x]:
+                if not seen[y]:
+                    seen[y] = True
+                    queue.append(y)
+                    bfs_tour.append((x, y))
+        return bfs_tour
+
+    def DFS(self, s):
+        dfs_tour = []
+        stack = [~s, s]
+        seen = [False] * self.N
+        finished = [False] * self.N
+        while stack:
+            x = stack.pop()
+            if x >= 0 and not seen[x]:
+                seen[x] = True
+                dfs_tour.append(x)
+                for y in self.graph[x]:
+                    if not seen[y]:
+                        stack.append(~y)
+                        stack.append(y)
+            elif x < 0 and not finished[~x]:
+                dfs_tour.append(x)
+                finished[~x] = True
+        return dfs_tour
+
+    def Unweighted_Dist(self, s):
+        dist = [float("inf")] * self.N
+        dist[s] = 0
+        for x, y in self.BFS(s):
+            dist[y] = dist[x] + 1
+        return dist
+
+    def Parents(self, s):
+        parents = [None] * self.N
+        parents[s] = s
+        for x, y in self.BFS(s):
+            parents[y] = x
+        return parents
+
+    def Build_LCA(self, s=0):
+        """以 s 为根节点预处理 LCA"""
+        self.euler_tour = self.DFS(s)
+        self.dfs_in_index = [None] * self.N
+        self.dfs_out_index = [None] * self.N
+        self.depth = self.Unweighted_Dist(s)
+        self.parents = self.Parents(s)
+        
+        for i, x in enumerate(self.euler_tour):
+            if x >= 0:
+                self.dfs_in_index[x] = i
+            else:
+                self.dfs_out_index[~x] = i
+                
+        self.ST = SegmentTree(2 * self.N, lambda x, y: min(x, y), float("inf"))
+        lst = [None] * (2 * self.N)
+        for i in range(2 * self.N):
+            if i < len(self.euler_tour):
+                if self.euler_tour[i] >= 0:
+                    lst[i] = self.depth[self.euler_tour[i]]
+                else:
+                    lst[i] = self.depth[self.parents[~self.euler_tour[i]]]
+        self.ST.Build(lst)
+
+    def LCA(self, a, b):
+        """查询节点 a 和 b 的最近公共祖先，单次 O(1)"""
+        m = min(self.dfs_in_index[a], self.dfs_in_index[b])
+        M = max(self.dfs_in_index[a], self.dfs_in_index[b])
+        idx = self.ST.Query_Index(m, M + 1)
+        x = self.euler_tour[idx]
+        if x >= 0:
+            return x
+        else:
+            return self.parents[~x]
+
+    def Tree_Dist(self, u, v):
+        """查询节点 u 到 v 的距离，单次 O(1)"""
+        lca_node = self.LCA(u, v)
+        return self.depth[u] + self.depth[v] - 2 * self.depth[lca_node]
+class Solution:
+    def solve(self, n: int, edges: List[List[int]], queries: List[List[int]]) -> List[int]:
+        # 1. 0-indexed 处理并初始化图模板
+        edges_0 = [(u - 1, v - 1) for u, v in edges]
+        
+        # 默认直接传 edges 即可，模板内已处理好双向建图
+        g = Graph(n, edges=edges_0)
+        
+        # 2. 必须先调用 Build_LCA 进行 O(N) 预处理
+        g.Build_LCA(0)
+        
+        # 3. O(1) 批量回答查询
+        ans = []
+        for x, y in queries:
+            dist = g.Tree_Dist(x - 1, y - 1)
+            ans.append(dist)
+            
+        return ans
