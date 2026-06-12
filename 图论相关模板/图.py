@@ -14,20 +14,6 @@ readlines = sys.stdin.readlines
 sys.setrecursionlimit(10**7)
 
 
-import bisect
-import copy
-import heapq
-import itertools
-import math
-import sys
-from collections import defaultdict, deque
-from functools import lru_cache, reduce
-from math import gcd as Gcd
-
-read = sys.stdin.read
-readline = sys.stdin.readline
-readlines = sys.stdin.readlines
-sys.setrecursionlimit(10**7)
 
 
 class Graph:
