@@ -1,0 +1,33 @@
+import sys
+input = sys.stdin.readline
+
+N, K = map(int, input().split())
+D = []
+for i in range(N):
+    l, r = map(int, input().split())
+    D.append((r, l))
+    
+D.sort()
+
+def check(m):
+    now = -10**18
+    cnt = 0
+    for r, l in D:
+        if l >= now + m:
+            cnt += 1
+            now = r
+    return cnt >= K
+
+def BinarySearch(yes = 10 ** 18, no = -1):
+    while abs(yes - no) != 1:
+        mid = (yes + no)//2
+        if check(mid):
+            yes = mid
+        else:
+            no = mid
+    return yes
+
+if not check(1):
+    print(-1)
+else:
+    print(BinarySearch(0, 10 ** 10))
