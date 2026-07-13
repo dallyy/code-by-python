@@ -1,0 +1,53 @@
+import sys
+input = lambda: sys.stdin.readline().rstrip()
+mi = lambda: map(int, input().split())
+
+def solve():
+    N, K = mi()
+    A = [0] * N
+    B = [0] * N
+    for i in range(N):
+        a, b = mi()
+        A[i] = a
+        B[i] = b
+
+    def kadane():
+        """
+        在当前 A, B 数组上求 D[i]=B[i]-A[i] 的最大子段和
+        返回 (max_sum, l, r)，其中子段为 [l, r)
+        若所有子段和 <= 0，返回 (<=0, -1, -1)
+        O(N) 时间，O(1) 额外空间
+        """
+        best = -1          # 用 -1 作为"未找到正子段"的标记
+        cur = 0
+        start = 0
+        bl, br = -1, -1
+
+        for i in range(N):
+            d = B[i] - A[i]
+            if cur + d < d:
+                # 从 i 重新开始一段
+                cur = d
+                start = i
+            else:
+                cur += d
+
+            if cur > best:
+                best = cur
+                bl = start
+                br = i + 1  # 右端点 exclusive
+
+        return best, bl, br
+
+    # 贪心：至多 K 轮，每轮选当前增益最大的正子段并翻转
+    for _ in range(K):
+        gain, l, r = kadane()
+        if gain <= 0:
+            break  # 后续不可能再有正增益，提前终止
+        # 翻转 [l, r)：交换 A[j] 和 B[j]
+        for j in range(l, r):
+            A[j], B[j] = B[j], A[j]
+
+    print(sum(A))
+
+solve()
