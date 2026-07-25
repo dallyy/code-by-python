@@ -1,76 +1,623 @@
-"""
-一个数据结构来处理以下查询：• add(x)：将 x 添加到集合中。• mex()：检索集合中的 mex 值。时间复杂度都为 O(1).
-"""
-class Mex:
-   
-    def __init__(self):
-        self.n = 0
-        self.mex = 0
-        self.max_limit = (1 << 31) - 1       
-        self.used = [False] * 1
-        self.v = []                           
+# -*- coding: utf-8 -*-
+# 【知识点】
+# 二分Trie树
+# 快速处理以下查询：
+# 1. 插入x。（insert）
+# 2. 获取x以上的最小元素的顺序（lower_bound）
+# 3. 获取x以下的最大元素的顺序（upper_bound）
+# 4. 获取x的个数（count）
+# 5. 删除x（remove, removes）
+# 6. 获取升序第k个值（k_th_elm）
+# 7. 获取二分Trie树内的最小元素（smallest_number）
+# 8. 获取二分Trie树内的最大元素（biggest_number）
+# 
+# ※ 由此，可以进行与C++有序多重集合相同的操作。
+# ※ 但是，可管理的数据仅限于非负整数。
 
-    def add(self, x: int) -> None:
-        if self.max_limit < x:
-            return
+import math
+import time
 
-        size = len(self.used)
-        self.n += 1
-        if self.n == size:
-            size *= 2
-            self.used += [False] * (size - len(self.used))
-            i = 0
-            while i < len(self.v):
-                if self.v[i] < size:
-                    self.used[self.v[i]] = True
-                    self.v[i], self.v[-1] = self.v[-1], self.v[i]
-                    self.v.pop()
+class BinaryTrie:
+    """二分Trie树的数据结构"""
+    
+    def __init__(self, max_number=10**9+1, calc_mex=False):
+        """构建最多可处理max_number的二分Trie树。
+           出于计算bit_len的需要，暂且保留最大可容纳的数
+        Returns:
+            dict: 二分Trie树。
+        """
+        # 最大数
+        self.max_number = max_number
+        self.height = len(bin(max_number)[2:])
+        # 最下层bit为0的key
+        self.zero_key = (2 ** self.height) - 1
+        # 预先使MEX可记忆化
+        self.memo_mex = -1
+        self.memo_reverse_mex = -1
+        # 为了避免频繁使用count函数的记忆化（在叶子部分以{value: count}的形式持有）
+        self.memo_count = {}
+
+        self.binary_trie = [{}] + [{} for n in range(self.height)]  # 按树的层级分别持有字典可能会更快
+        self.binary_trie[0][0] = 0
+
+    def initilize(self, xs=[]):
+        """向二分Trie树中一次性插入数值。（初始化）
+
+        Args:
+            xs (list): int的列表。
+
+        Returns:
+            bool: 成功与否。
+        """
+        # [重要] 一次性进行大量插入时，排序后会更快
+        xs.sort()
+        # 为重置MEX而转换为set
+        xs_set = set(xs)
+        if self.memo_mex in xs_set:
+            self.memo_mex = -1  # 重置MEX的记忆化
+
+        xs_bits = [{}] + [{} for n in range(self.height)]  # 按树的层级分别持有字典可能会更快
+
+        # 先按高度创建合计
+        xs_bits[0][0] = 0
+        for x in xs:
+            bits = bin(x)[2:].zfill(self.height)
+            index = 0
+            height = 0  # 树的高度
+        
+            xs_bits[0][0] += 1  # 增加根节点计数
+            for bit in bits:
+                height += 1
+                if bit == "0":
+                    index = (index * 2) + 1
                 else:
-                    i += 1
+                    index = (index * 2) + 2
 
-        if x < size:
-            self.used[x] = True
+                if index not in xs_bits[height]:
+                    xs_bits[height][index] = 1
+                else:
+                    xs_bits[height][index] += 1
+
+            self.memo_count[x] = [index, xs_bits[height][index]]
+
+        for height, xs_bit in enumerate(xs_bits):
+            self.binary_trie[height] = xs_bit
+
+        return True
+
+    def insert(self, x):
+        """向二分Trie树中插入数值。
+
+        Args:
+            x (int): 大于等于0的int。
+
+        Returns:
+            int: 当前X的个数。
+        """
+        if self.memo_mex == x:
+            self.memo_mex = -1  # 重置MEX的记忆化
+
+        bits = bin(x)[2:].zfill(self.height)
+        index = 0
+        height = 0  # 树的高度
+        self.binary_trie[0][0] += 1  # 增加根节点计数
+        for bit in bits:
+            height += 1
+            if bit == "0":
+                index = (index * 2) + 1
+            else:
+                index = (index * 2) + 2
+
+            if index not in self.binary_trie[height]:
+                self.binary_trie[height][index] = 1
+            else:
+                self.binary_trie[height][index] += 1
+        
+        self.memo_count[x] = [index, self.binary_trie[height][index]]
+        return self.binary_trie[height][index]
+
+    def inserts(self, xs=[]):
+        """向二分Trie树中一次性插入数值。（初始化）
+
+        Args:
+            xs (list): int的列表。
+
+        Returns:
+            bool: 成功与否。
+        """
+        # [重要] 一次性进行大量插入时，排序后会更快
+        xs.sort()
+        # 为重置MEX而转换为set
+        xs_set = set(xs)
+        if self.memo_mex in xs_set:
+            self.memo_mex = -1  # 重置MEX的记忆化
+
+        xs_bits = [{}] + [{} for n in range(self.height)]  # 按树的层级分别持有字典可能会更快
+
+        # 先按高度创建合计
+        xs_bits[0][0] = 0
+        for x in xs:
+            bits = bin(x)[2:].zfill(self.height)
+            index = 0
+            height = 0  # 树的高度
+        
+            xs_bits[0][0] += 1  # 增加根节点计数
+            for bit in bits:
+                height += 1
+                if bit == "0":
+                    index = (index * 2) + 1
+                else:
+                    index = (index * 2) + 2
+
+                if index not in xs_bits[height]:
+                    xs_bits[height][index] = 1
+                else:
+                    xs_bits[height][index] += 1
+
+            self.memo_count[x] = [index, xs_bits[height][index]]
+
+        for height, xs_bit in enumerate(xs_bits):
+            for key in xs_bit:
+                if key not in self.binary_trie[height]:
+                    self.binary_trie[height][key] = xs_bit[key]
+                else:
+                    self.binary_trie[height][key] += xs_bit[key]
+
+        return True
+
+    def remove(self, x):
+        """从二分Trie树内删除所有X。
+
+        Args:
+            x (int): 大于等于0的int。
+        
+        Returns:
+            int: 当前X的个数。
+        """
+        # 预先计算数量（高速化）
+        if x in self.memo_count:
+            number_count = self.memo_count[x][1]
         else:
-            self.v.append(x)
+            return 0
 
-    def query(self) -> int:
-        while self.used[self.mex]:
-            self.mex += 1
-        return self.mex
+        if self.memo_mex != -1 and self.memo_mex > x:
+            self.memo_mex = x  # 如果MEX的记忆存在且X小于记忆值
 
+        bits = bin(x)[2:].zfill(self.height)
+        height = 0  # 树的高度
+        index = 0
+        self.binary_trie[0][0] -= number_count
+        for bit in bits:
+            height += 1
+            if bit == "0":
+                index = (index * 2) + 1
+            else:
+                index = (index * 2) + 2
 
-class Solution:
-    def maximumMEX(self, nums: List[int]) -> List[int]:
-        N = len(nums)
-        
-        # 统计每个数的出现次数
-        mp = {}
-        for a in nums:mp[a] = mp.get(a, 0) + 1
-        # 有序集合 S 保存当前未出现的非负整数
-        S = SortedSet()
-        for i in range(N + 2):
-            if i not in mp:
-                S.add(i)
-        
-        B = []
-        i = 0
-#分组循环
-        while i < N:
-            val = S[0]  # 当前未出现的最小非负整数
-            mex = Mex()
-            
-            # 不断添加元素直到该段的 mex 等于 val
-            while True:
-                mex.add(nums[i])
-                mp[nums[i]] -= 1
-                if mp[nums[i]] == 0:
-                    S.add(nums[i])
-                i += 1
-                if mex.query() == val:
-                    break
-            
-            B.append(val)
-        
-        return B
+            self.binary_trie[height][index] -= number_count
+            if self.binary_trie[height][index] == 0:
+                del self.binary_trie[height][index]
 
+        del self.memo_count[x]
+        # 全部删除
+        return 0
 
+    def removes(self, x, c):
+        """从二分Trie树内删除C个X。
+           如果C大于binary_trie中包含的数量，则全部删除。
+
+        Args:
+            binary_trie (_type_): 二分Trie树
+            x (_type_): 要删除的值
+        """
+        bits = bin(x)[2:].zfill(self.height)
+        height = 0  # 树的高度
+        index = 0
+
+        # 不能删除超过内部存在的数量（高速化）
+        if x in self.memo_count:
+            number_count = self.memo_count[x][1]
+        else:
+            return 0
+
+        c = min(c, number_count)
+        self.binary_trie[0][0] -= c
+        for bit in bits:
+            height += 1
+            if bit == "0":
+                index = (index * 2) + 1
+            else:
+                index = (index * 2) + 2
+
+            self.binary_trie[height][index] -= c
+            if self.binary_trie[height][index] == 0:
+                del self.binary_trie[height][index]
+
+        if index not in self.binary_trie[height] and self.memo_mex != -1 and self.memo_mex > x:
+            self.memo_mex = x  # 如果MEX的记忆存在且X小于记忆值
+
+        if index not in self.binary_trie[height]:
+            del self.memo_count[x]
+            return 0
+        else: 
+            self.memo_count[x] = [index, self.binary_trie[height][index]]
+            return self.binary_trie[height][index]
+
+    def count(self, x):
+        """计算二分Trie树内存在多少个x。
+
+        Args:
+            x (int): 大于等于0的int。
+
+        Returns:
+            int: x的个数。
+        """
+        bits = bin(x)[2:].zfill(self.height)
+        height = 0  # 树的高度
+        index = 0
+        for bit in bits:
+            height += 1
+            if bit == "0":
+                index = (index * 2) + 1
+            else:
+                index = (index * 2) + 2
+
+            if index not in self.binary_trie[height]:
+                return 0
+
+        return self.binary_trie[height][index]
+
+    def length(self):
+        """获取二分Trie树内的数据总数。
+
+        Returns:
+            int: 数据总数。
+        """
+        return self.binary_trie[0][0] if 0 in self.binary_trie[0] else -1
+
+    def smallest_number(self):
+        """获取二分Trie树内的最小值。
+
+        Args:
+            binary_trie (list | array): 二分Trie树。
+            x (int): 大于等于0的int。
+        Returns:
+            int: 二分Trie树内的最小值。
+        """
+        if self.binary_trie[0] == 0:
+            return -1  # binary_trie内为空
+
+        index = 0
+        height = 0
+        smallest = []
+        for bit in range(self.height):
+            height += 1
+            left_index = (index * 2) + 1  # 左子节点
+            right_index = (index * 2) + 2  # 右子节点
+
+            if left_index in self.binary_trie[height] and self.binary_trie[height][left_index] >= 1:
+                index = left_index
+                smallest.append("0")
+            else:
+                index = right_index
+                smallest.append("1")
+
+        return int("".join(smallest), 2)
+
+    def biggest_number(self):
+        """获取二分Trie树内的最大值。
+
+        Args:
+            x (int): 大于等于0的int。
+        Returns:
+            int: 二分Trie树内的最大值。
+        """
+        if self.binary_trie[0] == 0:
+            return -1  # binary_trie内为空
+
+        index = 0
+        height = 0
+        biggest = []
+        for bit in range(self.height):
+            height += 1
+            left_index = (index * 2) + 1  # 左子节点
+            right_index = (index * 2) + 2  # 右子节点
+
+            if right_index in self.binary_trie[height] and self.binary_trie[height][right_index] >= 1:
+                index = right_index
+                biggest.append("1")
+            else:
+                index = left_index
+                biggest.append("0")
+
+        return int("".join(biggest), 2)
+
+    def lower_bound(self, x):
+        """获取二分Trie树内x以上的最小元素的升序顺序。
+           [思路]: 从叶子向根追溯，找到大于等于1的node后，再从那里向大于等于1且较小的叶子前进。
+
+        Args:
+            x (int): 大于等于0的int。
+
+        Returns:
+            int: 二分Trie树内x以上的最小元素
+        """
+
+        bits = bin(x)[2:].zfill(self.height)
+        biggest = self.biggest_number()
+        # 指定值与最大值相同
+        if x == biggest:
+            return x
+
+        # 指定值大于最大值
+        if x > biggest:
+            return -1  # 不存在
+
+        index = 0
+        height = 0
+        for bit in bits:
+            height += 1
+            if bit == "0":
+                index = (index * 2) + 1
+            else:
+                index = (index * 2) + 2
+
+        if index in self.binary_trie[height] and self.binary_trie[height][index] >= 1:  # 存在与X完全相等的数字
+            return int(bits, 2)
+        else:
+            # 从叶子反向查看
+            # · 沿着1的路径返回时，继续再返回一个
+            # · 从0方向返回到根时，寻找1方向的最小值
+            # · 从1方向返回到根时，值本身就不存在
+            for i in range(self.height - 1, -1, -1):
+                if bits[i] == "1":
+                    # 直接返回
+                    index = (index // 2) - 1
+                    height -= 1
+                    continue
+                else:
+                    index = (index // 2)
+                    height -= 1
+                    if ((index * 2) + 2) in self.binary_trie[height + 1] and self.binary_trie[height + 1][(index * 2) + 2] >= 1:  # 如果能向右前进
+                        bits = bits[:i]
+                        break
+
+            for counter in range(self.height - len(bits)):
+                height += 1
+                if counter == 0:
+                    bits = bits + "1"
+                    index = (index * 2) + 2  # 向右前进
+                else:
+                    # 向更小的方向前进
+                    index_left = (index * 2) + 1
+                    if index_left in self.binary_trie[height] and self.binary_trie[height][index_left] >= 1:
+                        bits += "0"
+                        index = index_left
+                    else:
+                        bits += "1"
+                        index = (index * 2) + 2
+
+            return int(bits, 2)
+
+    def upper_bound(self, x):
+        """获取二分Trie树内x以下的最大元素的升序顺序。
+           [思路]: 从叶子向根追溯，找到大于等于1的node后，再从那里向大于等于1且较大的叶子前进。
+
+        Args:
+            x (int): 大于等于0的int。
+
+        Returns:
+            int: 二分Trie树内x以下的最大元素
+        """
+        bits = bin(x)[2:].zfill(self.height)
+        smallest = self.smallest_number()
+        # 指定值与最小值相同
+        if x == smallest:
+            return x
+
+        # 指定值小于最小值
+        if x < smallest:
+            return -1  # 不存在
+
+        index = 0
+        height = 0
+
+        # 计算X的index
+        for bit in bits:
+            height += 1
+            if bit == "0":
+                index = (index * 2) + 1
+            else:
+                index = (index * 2) + 2
+
+        if index in self.binary_trie[height] and self.binary_trie[height][index] >= 1:  # 存在与X完全相等的数字
+            return int(bits, 2)
+        else:
+            # 从叶子反向查看
+            # · 沿着0的路径返回时，继续再返回一个
+            # · 从1方向返回到根时，寻找0方向的最大值
+            # · 从0方向返回到根时，值本身就不存在
+            for i in range(self.height - 1, -1, -1):
+                if bits[i] == "0":
+                    # 直接返回
+                    index = (index // 2)
+                    height -= 1
+                    continue
+                else:
+                    index = (index // 2) - 1
+                    height -= 1
+                    if ((index * 2) + 1) in self.binary_trie[height + 1] and self.binary_trie[height + 1][(index * 2) + 1] >= 1:  # 如果能向左前进
+                        bits = bits[:i]
+                        break
+
+            for counter in range(self.height - len(bits)):
+                height += 1
+                if counter == 0:
+                    bits = bits + "0"
+                    index = (index * 2) + 1  # 向左前进
+                else:
+                    # 向更大的方向前进
+                    index_left = (index * 2) + 2
+                    if index_left in self.binary_trie[height] and self.binary_trie[height][index_left] >= 1:
+                        bits += "1"
+                        index = index_left
+                    else:
+                        bits += "0"
+                        index = (index * 2) + 1
+            return int(bits, 2)
+
+    def k_th_number(self, k):
+        """计算二分Trie树内第K大的值。
+           [思路] 在Trie树内进行深度优先搜索。
+
+        Args:
+            k (int): 大于等于1的int。
+
+        Returns:
+            int: 二分Trie树内第K大的元素
+        """
+        counter = 0
+        if k > self.binary_trie[0][0]:
+            return -1
+
+        stack = [(0, 0)]  # 使用栈追踪深度和节点
+        depth = 0
+        while stack:
+            index, depth = stack.pop()
+
+            if depth == self.height:
+                # 到达树的叶子
+                if index in self.binary_trie[depth]:
+                    counter += 1
+                    if counter == k:
+                        return index - self.zero_key
+
+            else:
+                left_child = (2 * index) + 1 
+                right_child = (2 * index) + 2
+                exists = False
+
+                if right_child in self.binary_trie[depth + 1]:
+                    stack.append((right_child, depth + 1))
+                    exists = True
+
+                if left_child in self.binary_trie[depth + 1]:
+                    stack.append((left_child, depth + 1))
+                    exists = True
+
+                if exists:
+                    depth += 1
+                else:
+                    depth -= 1
+
+        return -1
+
+    def traverse_binary_trie(self):
+        """通过深度优先搜索遍历二分Trie树。
+
+        Returns:
+            list: 二分Trie树内元素的列表（已排序） 
+        """
+        stack = [(0, 0)]  # 使用栈追踪深度和节点
+        depth = 0
+        result = []
+        while stack:
+            index, depth = stack.pop()
+
+            if depth == self.height:
+                # 到达树的叶子
+                if index in self.binary_trie[depth]:
+                    result.append(index - self.zero_key)
+
+            else:
+                left_child = (2 * index) + 1 
+                right_child = (2 * index) + 2
+                exists = False
+
+                if right_child in self.binary_trie[depth + 1]:
+                    stack.append((right_child, depth + 1))
+                    exists = True
+
+                if left_child in self.binary_trie[depth + 1]:
+                    stack.append((left_child, depth + 1))
+                    exists = True
+
+                if exists:
+                    depth += 1
+                else:
+                    depth -= 1
+        return result
+
+    def mex(self):
+        """计算二分Trie树的MEX（minimum excluded）。
+
+        Returns:
+            int: MEX值
+        """
+        if self.memo_mex != -1:
+            return self.memo_mex
+
+        stack = [(0, 0)]  # 使用栈追踪深度和节点
+        depth = 0
+        while stack:
+            index, depth = stack.pop()
+
+            if depth == self.height:
+                # 到达树的叶子
+                if index in self.binary_trie[depth]:
+                    continue
+                else:
+                    self.memo_mex = index - self.zero_key  # 记忆化处理
+                    return index - self.zero_key  # 在叶子处首次不存在的位置
+
+            else:
+                left_child = (2 * index) + 1 
+                right_child = (2 * index) + 2
+                exists = False
+
+                if right_child in self.binary_trie[depth + 1]:
+                    stack.append((right_child, depth + 1))
+                    exists = True
+                else:
+                    stack.append((right_child, depth + 1))
+
+                if left_child in self.binary_trie[depth + 1]:
+                    stack.append((left_child, depth + 1))
+                    exists = True
+                else:
+                    stack.append((left_child, depth + 1))
+
+                if exists:
+                    depth += 1
+                else:
+                    depth -= 1
+
+        self.memo_mex = -1
+        return -1  # 不存在
+
+if __name__ == "__main__":
+    # 主程序：解决滑动窗口MEX问题
+    N, M = list(map(int, input().split(" ")))
+    A = list(map(int, input().split(" ")))
+    bit = BinaryTrie()
+    A_dash = A[:M]
+    bit.inserts(A_dash)  # 这个怎么样？
+
+    answer = math.inf
+    answer = min(answer, bit.mex())
+
+    counter = N - M + 1
+    summary = 0
+    for n in range(1, counter):
+        if A[n - 1] == A[n + M - 1]:
+            answer = min(answer, bit.mex())
+        else:
+            bit.removes(A[n - 1], 1)
+            bit.insert(A[n + M - 1])
+            answer = min(answer, bit.mex())
+
+        # 高速化1
+        if answer == 0:
+            break
+
+    print(answer)
